@@ -358,6 +358,10 @@ export function installTauriMock() {
             case 'save_file':
               resolve(null);
               break;
+            case 'copy_path_across':
+            case 'delete_path':
+              resolve(null);
+              break;
             case 'compare_dirs':
               resolve(DEMO_DIR);
               break;

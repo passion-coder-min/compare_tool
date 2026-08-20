@@ -204,25 +204,52 @@ pub async fn compare_dirs(
     Ok(out)
 }
 
-/// 跨侧复制：文件覆盖复制并同步 mtime（保证快速模式下随后对比显示相同），
-/// 目录递归创建。
+/// 跨侧复制：文件覆盖复制并同步 mtime；目录递归复制整个子树（保持 mtime），
+/// 保证快速模式下复制完成后对比立即显示相同。
 #[tauri::command]
 pub async fn copy_path_across(src_path: String, dst_path: String) -> CmdResult<()> {
     let src = PathBuf::from(&src_path);
     let dst = PathBuf::from(&dst_path);
     let md = fs::metadata(&src).map_err(|e| format!("无法读取源路径: {e}"))?;
     if md.is_dir() {
-        fs::create_dir_all(&dst).map_err(|e| format!("无法创建目录 {dst_path}: {e}"))?;
+        copy_dir_recursive(&src, &dst).map_err(err_str)?;
         return Ok(());
     }
+    copy_file_with_mtime(&src, &dst).map_err(err_str)?;
+    Ok(())
+}
+
+fn copy_file_with_mtime(src: &Path, dst: &Path) -> anyhow::Result<()> {
     if let Some(parent) = dst.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("无法创建父目录: {e}"))?;
+        fs::create_dir_all(parent)?;
     }
-    fs::copy(&src, &dst).map_err(|e| format!("复制失败 {src_path} -> {dst_path}: {e}"))?;
-    if let Ok(st) = fs::metadata(&src) {
+    fs::copy(src, dst)?;
+    if let Ok(st) = fs::metadata(src) {
         let atime = FileTime::from_last_access_time(&st);
         let mtime = FileTime::from_last_modification_time(&st);
-        let _ = set_file_times(&dst, atime, mtime);
+        let _ = set_file_times(dst, atime, mtime);
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ft = entry.file_type()?;
+        let s = entry.path();
+        let d = dst.join(entry.file_name());
+        if ft.is_dir() {
+            copy_dir_recursive(&s, &d)?;
+        } else if ft.is_file() {
+            copy_file_with_mtime(&s, &d)?;
+        }
+    }
+    // 同步目录本身的 mtime
+    if let Ok(st) = fs::metadata(src) {
+        let atime = FileTime::from_last_access_time(&st);
+        let mtime = FileTime::from_last_modification_time(&st);
+        let _ = set_file_times(dst, atime, mtime);
     }
     Ok(())
 }
@@ -516,5 +543,42 @@ mod tests {
 
     fn tempdir() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
+    }
+
+    #[test]
+    fn copy_dir_recursive_copies_tree() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let tmp = tempdir();
+            let src = tmp.path().join("src");
+            write(&src.join("a.txt"), "aaa");
+            write(&src.join("sub/deep/b.txt"), "bbb");
+            // 固定 mtime，验证复制后两侧快速模式判定相同
+            let t = filetime::FileTime::from_unix_time(1_000_000_000, 0);
+            filetime::set_file_mtime(&src.join("a.txt"), t).unwrap();
+            filetime::set_file_mtime(&src.join("sub/deep/b.txt"), t).unwrap();
+
+            let dst = tmp.path().join("dst");
+            copy_path_across(
+                src.to_string_lossy().into_owned(),
+                dst.to_string_lossy().into_owned(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(fs::read_to_string(dst.join("a.txt")).unwrap(), "aaa");
+            assert_eq!(fs::read_to_string(dst.join("sub/deep/b.txt")).unwrap(), "bbb");
+            // 复制后同 mtime → 快速模式对比为相同
+            let out = compare_dirs(
+                src.to_string_lossy().into_owned(),
+                dst.to_string_lossy().into_owned(),
+                false,
+            )
+            .await
+            .unwrap();
+            for e in &out {
+                assert_eq!(e.status, DirStatus::Same, "{} 应为相同", e.rel_path);
+            }
+        });
     }
 }
