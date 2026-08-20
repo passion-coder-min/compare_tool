@@ -405,6 +405,14 @@ mod tests {
         let r = tmp.path().join("r");
         write(&l.join("same.txt"), "abc");
         write(&r.join("same.txt"), "abc");
+        // 显式固定相同 mtime：避免 CI 文件系统上两次写入落在不同毫秒导致判定为“较新”
+        for d in [&l, &r] {
+            filetime::set_file_mtime(
+                d.join("same.txt"),
+                filetime::FileTime::from_unix_time(1_000_000_000, 0),
+            )
+            .unwrap();
+        }
         write(&l.join("only_l.txt"), "x");
         write(&r.join("only_r.txt"), "y");
         write(&l.join("diff_size.txt"), "aaa");

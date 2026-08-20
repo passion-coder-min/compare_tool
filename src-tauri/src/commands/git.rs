@@ -545,37 +545,23 @@ mod tests {
     fn fixture_repo() -> (tempfile::TempDir, String) {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().into_owned();
-        let cfg = [
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "user.name=t",
-            "-c",
-            "commit.gpgsign=false",
-        ];
         run_git(&root, &["init", "-b", "main"]).unwrap();
+        // 仓库级身份配置：CI 环境无全局 git config 时提交/cherry-pick 也能工作
+        run_git(&root, &["config", "user.email", "t@t"]).unwrap();
+        run_git(&root, &["config", "user.name", "t"]).unwrap();
+        run_git(&root, &["config", "commit.gpgsign", "false"]).unwrap();
+
+        let commit = |msg: &str| {
+            run_git(&root, &["add", "."]).unwrap();
+            run_git(&root, &["commit", "-m", msg]).unwrap();
+        };
         std::fs::write(tmp.path().join("file.txt"), "line1\nline2\nline3\n").unwrap();
-        run_git(&root, &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "add", "."]).unwrap();
-        run_git(
-            &root,
-            &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "commit", "-m", "c1 base"],
-        )
-        .unwrap();
+        commit("c1 base");
         run_git(&root, &["checkout", "-b", "feature"]).unwrap();
         std::fs::write(tmp.path().join("added.txt"), "new file\n").unwrap();
-        run_git(&root, &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "add", "."]).unwrap();
-        run_git(
-            &root,
-            &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "commit", "-m", "f1 add file"],
-        )
-        .unwrap();
+        commit("f1 add file");
         std::fs::write(tmp.path().join("file.txt"), "line1\nline2-feature\nline3\n").unwrap();
-        run_git(&root, &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "add", "."]).unwrap();
-        run_git(
-            &root,
-            &[cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], "commit", "-m", "f2 modify line"],
-        )
-        .unwrap();
+        commit("f2 modify line");
         run_git(&root, &["checkout", "main"]).unwrap();
         (tmp, root)
     }
@@ -665,7 +651,7 @@ mod tests {
             "line1\nline2-main\nline3\n",
         )
         .unwrap();
-        run_git(&root, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-am", "m2"])
+        run_git(&root, &["commit", "-am", "m2"])
             .unwrap();
         let commits = rt()
             .block_on(git_commits_between(root.clone(), "main".into(), "feature".into()))
@@ -699,7 +685,7 @@ mod tests {
             "line1\nline2-main\nline3\n",
         )
         .unwrap();
-        run_git(&root, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-am", "m2"])
+        run_git(&root, &["commit", "-am", "m2"])
             .unwrap();
         let commits = rt()
             .block_on(git_commits_between(root.clone(), "main".into(), "feature".into()))
@@ -766,7 +752,7 @@ mod tests {
         let (_t2, root2) = fixture_repo();
         std::fs::write(std::path::Path::new(&root2).join("m.txt"), "m").unwrap();
         run_git(&root2, &["add", "m.txt"]).unwrap();
-        run_git(&root2, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "m1"]).unwrap();
+        run_git(&root2, &["commit", "-m", "m1"]).unwrap();
         let g2 = rt()
             .block_on(git_graph(root2, "main".into(), "feature".into()))
             .unwrap();
