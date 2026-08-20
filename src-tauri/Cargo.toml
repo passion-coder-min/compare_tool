@@ -1,0 +1,37 @@
+[package]
+name = "compare"
+version = "0.1.0"
+description = "Beyond Compare style diff tool with git integration"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "compare_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+similar = { version = "2", features = ["unicode"] }
+jwalk = "0.8"
+blake3 = "1"
+memmap2 = "0.9"
+filetime = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
