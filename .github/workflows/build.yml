@@ -14,12 +14,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest # arm64 + x86_64
-            args: --target aarch64-apple-darwin --target x86_64-apple-darwin
+          # Tauri CLI 一次只接受一个 --target，macOS 两个架构拆成两个 runner
+          - platform: macos-latest # Apple Silicon
+            target: aarch64-apple-darwin
+          - platform: macos-latest # Intel
+            target: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ''
+            target: ''
           - platform: windows-latest
-            args: ''
+            target: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -34,7 +37,7 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       - name: Rust 缓存
         uses: swatinem/rust-cache@v2
@@ -58,4 +61,4 @@ jobs:
           releaseBody: '自动构建产物'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
