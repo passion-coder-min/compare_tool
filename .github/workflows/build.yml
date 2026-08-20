@@ -1,10 +1,11 @@
 name: Build
 
 on:
+  # 仅推送 v* tag 时构建并发布 Release（如 v1.0.0）
   push:
-    branches: [main, master]
-  pull_request:
-  workflow_dispatch:
+    tags:
+      - 'v*'
+  workflow_dispatch: # 保留手动触发便于调试
 
 jobs:
   build:
@@ -62,3 +63,16 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
+
+      - name: 上传构建产物（Workflow Artifacts）
+        uses: actions/upload-artifact@v4
+        with:
+          # macOS 两个架构按 target 命名，Linux/Windows 用平台名，避免同名冲突
+          name: compare-bundle-${{ matrix.target || matrix.platform }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/bundle/dmg/*.dmg
+            src-tauri/target/**/bundle/deb/*.deb
+            src-tauri/target/**/bundle/appimage/*.AppImage
+            src-tauri/target/**/bundle/msi/*.msi
+            src-tauri/target/**/bundle/nsis/*.exe
