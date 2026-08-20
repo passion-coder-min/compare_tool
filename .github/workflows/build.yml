@@ -57,8 +57,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__ # 仅打 tag 时创建 release
-          releaseName: 'Compare v__VERSION__'
+          # Release 直接用推送的 tag 名（如 v0.1.0.1-alpha），与打 tag 即发布的直觉一致
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Compare ${{ github.ref_name }}'
           releaseBody: '自动构建产物'
           releaseDraft: true
           prerelease: false
